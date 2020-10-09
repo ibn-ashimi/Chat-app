@@ -5,7 +5,7 @@ DB_USERNAME = app.config['MYSQL_USERNAME']
 DB_PASSWORD = app.config['MYSQL_PASSWORD']
 DB_NAME = app.config['MYSQL_DB']
 # app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://{}:{}@localhost:3306/{}'.format(DB_USERNAME, DB_PASSWORD, DB_NAME)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(baseDir, 'db.sqlite')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(baseDir, 'chat.db')
 db = SQLAlchemy(app)
 ma = Marshmallow(app)
 logger.debug("database connection started")
