@@ -1,6 +1,4 @@
 from views.users_route import *
-from views.files_route import *
-from views.email_route import *
 
 @app.errorhandler(InvalidUsage)
 def handle_invalid_usage(error):

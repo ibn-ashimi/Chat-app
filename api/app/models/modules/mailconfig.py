@@ -1,6 +1,7 @@
-from models.modules.core import Mail, Message, app, url_for, URLSafeTimedSerializer, SignatureExpired
+from models.modules.core import app, url_for, URLSafeTimedSerializer, SignatureExpired
+import smtplib, email, base64
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
 mail_secret = URLSafeTimedSerializer(app.config['SECRET_KEY'])
-mailconfig = {
-    "Sender": app.config['MAIL_SENDER'],
-}
-mail = Mail(app)
+msg = MIMEMultipart()

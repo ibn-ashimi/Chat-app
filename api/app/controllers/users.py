@@ -1,10 +1,10 @@
-from models.modules.core import logger, request, InvalidUsage, make_response, app, url_for
-from models.libs.filemanager import upload_image
+from models.modules.core import logger, request, InvalidUsage, make_response, app, url_for, redirect
 from models.dbmodels.user_model import *
-from models.modules.jwt import *
-from models.modules.mailconfig import *
+from models.libs.jwt import *
+from models.libs.mailing import *
 from datetime import datetime
 import os
+import ast
 
 class Auths():
     def confirms(token):
@@ -17,17 +17,22 @@ class Auths():
             
             userinfo = Auth.query.filter_by(email = resp).first()
             email = userinfo.email
-            userinfo.isVerified = 1
+            uid = userinfo.uid
+            userinfo.isVerified = True
             db.session.commit()
             db.session.close()
 
-            welcome_msg = 'Welcome to our platform user {}'.format(email)
+            welcome_msg = f'''
+            <b>Dear Customer</b><br />
+            <p>Congratulations and thanks for activating your account. Please find below your account details are</p>
+            <p>Email: <b>{email}</b></p>
+            <p>Customer Identification number: <b>{uid}</b></p>
+            <p>Once again welcome aboard.</p><br />
+            '''
             send_email(
-                "Welcome email", [email], welcome_msg
+                "Welcome email", [email], welcome_msg, True, '', 'Kreador Chat account <noreply@kreadortech.io>'
             )
-            return make_response({
-                "message": "validation complete",
-            }, 200)
+            return redirect(f"{app.config['SITE_URL']}login", code=302)
         except exc.SQLAlchemyError as e:
             raise Exception(e._message)
         except Exception as e:
@@ -37,12 +42,26 @@ class Auths():
         email = request.json['email']
         password = request.json['password']
         user = Auth.query.filter_by(email = email).first()
-        if not user:
+        userInfo = User.query.filter_by(email = email).first()
+        if not user or not userInfo:
             return make_response({
                 "error": "user email is invaild"
             }, 404)
 
         if user.isVerified == 0:
+            token = generate_email_token(email)
+            link = url_for('confirm', token=token, external=True)
+            link = f"{app.config['URL']}../{link}"
+            confirm_msg = f'''
+            Dear Customer,<br/>
+            We have created an account for you on our platform. To activate your account, please click the link below: <br />
+            <a href="{link}">Click to confirm your email</a><br /><br /><br />
+            Please note that the link expires in 24 hours.<br /><br /> 
+            <h4 style="font-weight:600">Kreador Team</h4>
+            '''
+            send_email(
+                "Validation required", [email], confirm_msg, True, '', 'Kreador Chat account <noreply@kreadortech.io>'
+            )
             return make_response({
                 "error": "your account is not validated"
             }, 401)
@@ -57,6 +76,7 @@ class Auths():
 
         token = generatejwt({
             "email": email,
+            "access": userInfo.access,
             "isVerified": user.isVerified,
             "uid": user.uid
         })
@@ -69,13 +89,11 @@ class Auths():
         try:
             user = Auth.query.filter_by(uid = uid).first()
             obj = User.query.filter_by(auth_id = uid).first()
-            delivery = Delivery.query.filter_by(auth_id = uid).first()
             if not user or not obj:
                 return make_response({
                     "error": "user account info not found"
                 }, 400)
             db.session.delete(user)
-            db.session.delete(delivery)
             db.session.delete(obj)
             db.session.commit()
             db.session.close()
@@ -105,19 +123,26 @@ class Auths():
             db.session.flush()
 
             date = datetime.now()
-            userinfo = User('', '', '', email, '', access, '', '', '', '', uid, '', date)
+            userinfo = User('', '', '', email, '', uid, '', '', date)
             db.session.add(userinfo)
             db.session.commit()
             db.session.close()
 
             token = generate_email_token(email)
             link = url_for('confirm', token=token, external=True)
-            confirm_msg = 'Dear Customer,<br/>We have created a customer account for you on our website. To activate your account, please click the link below: <br /><a href="{}">Click to confirm your email</a><br /><br /><br />Please note that the link expires in 24 hours.<br />We thank you for choosing PCL Consult<br /> <br /> <h2 style="font-weight:600">The PCL Consult Team</h2><br />'.format(link)
+            link = f"{app.config['URL']}{link}"
+            confirm_msg = f'''
+            Dear Customer,<br/>
+            We have created an account for you on our platform. To activate your account, please click the link below: <br />
+            <a href="{link}">Click to confirm your email</a><br /><br /><br />
+            Please note that the link expires in 24 hours.<br /><br /> 
+            <h4 style="font-weight:600">Kreador Team</h4>
+            '''
             send_email(
-                "Validate your account", [email], confirm_msg, True
+                "Validate your account", [email], confirm_msg, True, '', 'Kreador Chat account <noreply@kreadortech.io>'
             )
             return make_response({
-                "message": "registration successful",
+                "message": "registration successful"
             }, 200)
         except exc.SQLAlchemyError as e:
             raise Exception(e._message)
@@ -127,6 +152,7 @@ class Auths():
     def change_password():
         email = request.json['email']
         password = request.json['new_password']
+        oldpassword = request.json['password']
 
         try:
             user = Auth.query.filter_by(email = email).first()
@@ -134,6 +160,12 @@ class Auths():
                 return make_response({
                     "error": "email is invalid"
                 }, 400)
+
+            check = verify_password(user.password, oldpassword)
+            if check == False:
+                return make_response({
+                    "error": "old password is incorrect"
+                }, 401)
 
             user.email = email
             user.password = hash_password(password)
@@ -142,56 +174,6 @@ class Auths():
             db.session.close()
             return make_response({
                 "message": "password changed",
-            }, 200)
-        except exc.SQLAlchemyError as e:
-            raise Exception(e._message)
-        except Exception as e:
-            raise Exception(str(e))
-
-    def confirm_password_link():
-        try:
-            resp = confirm_email_token(token, "email-forgot")
-            if resp == False:
-                return make_response({
-                    "error": "confirmation link expired or invalid"
-                }, 400)
-            
-            user = Auth.query.filter_by(email = resp).first()
-
-            email = user.email
-            password = "pwd" + str(int(datetime.now().strftime("%Y%m%d%H%M%S")))
-            user.password = hash_password(password)
-            db.session.add(user)
-            db.session.commit()
-            db.session.close()
-            confirm_msg = "To access your account please use the password below<br /><b>Your new paswword is: <h3>{}</h3></b>".format(password)
-            send_email(
-                "New password for you account", [email], confirm_msg, True
-            )
-            return make_response({
-                "message": "new password changed",
-            }, 200)
-        except exc.SQLAlchemyError as e:
-            raise Exception(e._message)
-        except Exception as e:
-            raise Exception(str(e))
-
-    def forgot_password():
-        email = request.json['email']
-        password = request.json['new_password']
-
-        try:
-            user = Auth.query.filter_by(email = email).first()
-            if not user:
-                return make_response({
-                    "error": "email is invalid"
-                }, 400)
-
-
-            token = generate_email_token(email, 'email-forgot')
-            link = url_for('forgot', token=token, external=True)
-            return make_response({
-                "message": "password reset link sent",
             }, 200)
         except exc.SQLAlchemyError as e:
             raise Exception(e._message)
@@ -218,7 +200,7 @@ class Users():
                     "error": "user account not found"
                 }, 400)
 
-            userInfo = user_scheme.dump(user)  
+            userInfo = user_scheme.dump(user)
             return {
                 "message": userInfo
             }
@@ -230,8 +212,7 @@ class Users():
     def get_user_by(value):
         try:
             users = User.query.filter(or_(
-                User.email.like(value), User.auth_id.like(value), User.firstname.like(value),
-                User.access.like(value), User.sex.like(value),User.country.like(value))).join(
+                User.email.like(value), User.auth_id.like(value), User.fullname.like(value), User.sex.like(value))).join(
                 Auth, Auth.uid == User.auth_id).all()
             if not users:
                 return make_response({
@@ -241,7 +222,6 @@ class Users():
             usersResults = []
             for user in users:
                 userObject = user_scheme.dump(user)
-                userObject['isverified'] = user.isVerified
                 usersResults.append(userObject)
             return {
                 "message": usersResults[::-1]
@@ -251,44 +231,13 @@ class Users():
         except Exception as e:
             raise Exception(str(e))
 
-    def add_userinfo():
+    def update_userinfo(uid):
         email = request.json['email']
         auth_id = request.json['auth_id']
         sex = request.json['sex']
         phone = request.json['phone']
-        address = request.json['address']
-        access = request.json['access']
-        city = request.json['city']
-        country = request.json['country']
+        fullname = request.json['fullname']
         username = request.json['username']
-        firstname = request.json['firstname']
-        lastname = request.json['lastname']
-        image = request.json['image']
-        try:
-            auth = Auth.query.filter_by(email = email).first()
-            if not auth:
-                return make_response({
-                    "error": "invalid email address"
-                }, 400)
-            
-            date = datetime.now()
-            userinfo = User(username, firstname, lastname, email, sex, access, phone, address, city, country, auth_id, image, date)
-            db.session.add(userinfo)
-            db.session.commit()
-            db.session.close()
-            return make_response({
-                "message": "user info saved",
-            }, 200)
-        except exc.SQLAlchemyError as e:
-            raise Exception(e._message)
-        except Exception as e:
-            raise Exception(str(e))
-
-    def update_userinfo(uid):
-        email = request.json['email']
-        username = request.json['username']
-        firstname = request.json['firstname']
-        lastname = request.json['lastname']
         image = request.json['image']
         try:
             userInfo = User.query.filter_by(auth_id = uid).first()
@@ -298,11 +247,13 @@ class Users():
                     "error": "invalid user id"
                 }, 400)
 
-            userInfo.firstname = firstname
-            userInfo.lastname = lastname
+            userInfo.fullname = fullname
             userInfo.username = username
-            userInfo.image = image
+            userInfo.sex = sex
+            userInfo.phone = phone
+
             authinfo.email = userInfo.email = email
+            userInfo.auth_id = authinfo.uid
             db.session.add(userInfo)
             db.session.add(authinfo)
             db.session.commit()

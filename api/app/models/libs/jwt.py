@@ -1,4 +1,4 @@
-from .core import make_response, request, app, jsonify, InvalidUsage
+from models.modules.core import make_response, request, app, jsonify, InvalidUsage
 import jwt
 import datetime
 from functools import wraps

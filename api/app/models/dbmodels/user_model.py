@@ -19,29 +19,19 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key = True)
     auth_id = db.Column(db.Integer, db.ForeignKey('auth.id'), unique = True)
     username = db.Column(db.String(50))
-    firstname = db.Column(db.String(50))
-    lastname = db.Column(db.String(50))
+    fullname = db.Column(db.String(50))
     email = db.Column(db.String(100))
     phone = db.Column(db.String(20))
     sex = db.Column(db.String(7))
-    access = db.Column(db.String(7))
-    address = db.Column(db.String(200))
-    city = db.Column(db.String(20))
-    country = db.Column(db.String(20))
     image = db.Column(db.String(500))
     date_added = db.Column(db.String(50))
 
-    def __init__(self, username, firstname, lastname, email, sex, access, phone, address, city, country, auth_id, image, date_added):
+    def __init__(self, username, fullname, email, sex, auth_id, image, date_added):
         self.username = username
         self.firstname = firstname
         self.lastname = lastname
         self.email = email
         self.sex = sex
-        self.access = access
-        self.phone = phone
-        self.address = address
-        self.city = city
-        self.country = country
         self.auth_id = auth_id
         self.date_added = date_added
 
@@ -51,7 +41,7 @@ class AuthSchema(ma.Schema):
 
 class UserSchema(ma.Schema):
     class Meta:
-        fields = ('username', 'firstname', 'lastname', 'email', 'sex', 'access', 'phone', 'address', 'city', 'country', 'auth_id', 'image', 'date_added', 'user')
+        fields = ('username', 'firstname', 'lastname', 'email', 'sex', 'auth_id', 'image', 'date_added', 'user')
 
 auth_scheme = AuthSchema()
 auths_scheme = AuthSchema(many = True)

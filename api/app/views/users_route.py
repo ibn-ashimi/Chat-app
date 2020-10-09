@@ -1,6 +1,6 @@
 from models.modules.core import app, jsonify, InvalidUsage, Response, lru_cache
 from controllers.users import Users, Auths
-from models.modules.jwt import *
+from models.libs.jwt import *
 
 @app.route('/remove/<authid>', methods=['DELETE'])
 @validate_token
